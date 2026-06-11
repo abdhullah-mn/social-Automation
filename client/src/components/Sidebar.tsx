@@ -1,9 +1,21 @@
-import { CalendarDaysIcon, LayoutDashboardIcon, UserIcon, Wand2Icon, } from "lucide-react";
+import { CalendarDaysIcon, LayoutDashboardIcon, LogOutIcon, UserIcon, Wand2Icon } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 
 
 const Sidebar = ({isOpen, setIsOpen} : {isOpen: boolean, setIsOpen: (isOpen: boolean) => void}) => {
-  const location = useLocation();
+    const {logout, user} = {
+        logout: ()=>{
+            window.location.href = "/";
+        },
+        user:{
+            name: "Abdullah Noufal",
+            email:"abdullah.noufal@example.com"
+        }
+
+    }
+  
+  
+    const location = useLocation();
 
 
   const navigationItems = [
@@ -40,18 +52,44 @@ const Sidebar = ({isOpen, setIsOpen} : {isOpen: boolean, setIsOpen: (isOpen: boo
              to={item.path}
              key={item.name}
              end={item.path === "/dashboard"}
-             onClick={() => setIsOpen(false)}>
+             onClick={() => setIsOpen(false)}
+             className={`flex items-center px-4 py-2 text-sm font-medium rounded-md hover:bg-slate-100 ${isActive ? "bg-red-50 text-red-600 border-red-100" : "text-slate-500 hover:bg-slate-50 border-transparent hover:text-slate-700"}`}>
                 <item.icon className={`size-4.5 shrink-0 ${isActive ? "text-red-500" : "text-slate-500"}`}/>
                 {item.name}
                 {isActive && <span className='ml-auto w-[5px] h-5 rounded-full bg-red-500'/>}
             </NavLink>
-
-
-
-  
         );
       })}
     </nav>
+
+    {/*footer*/}
+    <div className= 'p-4 border-t border-slate-100'>
+        <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors">
+            {/*user avatar*/}
+            <div className="size-8 rounded-full bg-linear-to-br from-red-400 to-pink-400 flex items-center justify-center text-white text-sm font-medium shrink-0">
+                {user?.name?.charAt(0).toUpperCase() || "U"}
+            </div>
+
+            {/*name and email of user displayed in sidebar footer*/}
+            <div className="flex-1 min-w-0">
+
+                {/*truncate the name and email if they are too long to fit in the sidebar footer*/}
+                <div className="text-sm text-slate-800 truncate">{user?.name}</div>
+                <div className="text-xs text-slate-500 truncate">{user?.email}</div>
+            </div>
+        </div>
+        {/*logout button*/}
+        <button 
+            onClick={logout}
+            className="mt-1 w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-slate-500 hover:text-red-500 hover:bg-red-50 transition-all duration-150"
+            title="Logout">
+            <LogOutIcon className="size-4" />
+            SignOut
+        </button>
+
+
+    </div>
+
 
     </div>
   )
