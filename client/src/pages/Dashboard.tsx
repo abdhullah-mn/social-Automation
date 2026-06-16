@@ -1,4 +1,4 @@
-import { CheckCircleIcon, Clock, ClockIcon, Share2Icon, TrendingUpDown, UserIcon } from "lucide-react";
+import { ActivityIcon, CheckCircleIcon, Clock, ClockIcon, Share2Icon, TrendingUpDown, UserIcon } from "lucide-react";
 import { useState } from "react";
 
 const Dashboard = () => {
@@ -69,6 +69,28 @@ const stats = [
           </div>
         ))}
       </div>
+
+    {/*recent activity feed*/}
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+        <h3 className="text-lg font-medium text-slate-800">Recent Activity</h3>
+        <span className="text-sm text-slate-500">{activities.length} events</span>
+      </div>
+
+      {activities.length ===0 ? (
+        <div className="flex flex-col items-center justify-center py-16 px-6">
+          <div className="flex flex-col items-center justify-center mb-3 size-12 bg-slate-100 rounded-full mx-auto mt-10"><ActivityIcon className="size-6 text-slate-400" /></div>
+          <p className="text-slate-500 text-sm mt-2">No recent activity</p>
+          <p className="text-slate-500 text-sm mt-1">Connect Accounts and schedule posts to see activity here.</p>
+        </div>
+      ):(
+        <div>
+          
+        </div>
+      )}
+
+    </div>
+
     </div>
   )
 }
