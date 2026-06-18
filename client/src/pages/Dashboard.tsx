@@ -1,5 +1,5 @@
-import { ActivityIcon, CheckCircleIcon, Clock, ClockIcon, Share2Icon, TrendingUpDown, UserIcon } from "lucide-react";
-import { useState } from "react";
+import { ActivityIcon, CheckCircleIcon, Clock, ClockIcon, SendIcon, Share2Icon, TrendingUpDown, UserIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 const Dashboard = () => {
   //idea behind this is to show a greeting based on the time of day, and then show some stats about the user's social media accounts. For now, we'll just show the greeting and a placeholder for the stats.
@@ -19,6 +19,28 @@ const [statsState, setStatsState] = useState({
 });
 
 const [activities, setActivities] = useState<any[]>([]);
+
+useEffect(()=>{
+
+  const fetchDashboardData = async () => {
+    try {
+      const [postsRes, accountsRes,activityRes] = [{data: dummyPostsData}, {data: dummyAccountsData}, {data: dummyActivityData}]; // Replace with actual API calls
+      const posts = postsRes.data;
+
+      setStats({
+        scheduled: posts.filter((post: any) => post.status === "scheduled").length,
+        published: posts.filter((post: any) => post.status === "published").length,
+        connectedAccounts: accountsRes.data.length
+      });
+
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    }
+  };
+
+  fetchDashboardData();
+
+},[])
 
 const stats = [
   {
@@ -85,7 +107,23 @@ const stats = [
         </div>
       ):(
         <div>
-          
+          {activities.map((activity)=>(
+            <div key={activity._id} className="flex items-start gap-4 px-6 py-4 hover:bg-slate-50/50 transition-colors">
+              <div className="size-9 rounded-xl flex items-center justify-center text-zinc-600 shrink-0 bg-zinc-100 mt-0.5">
+                <SendIcon className="size-5 text-slate-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className='text-xs px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600'>Published</span>
+                  <span className="text-xs text-slate-500 shrink-0">{new Date(activity.createdAt).toLocaleDateString()}</span>
+                  
+                </div>
+                <p className="text-slate-800 text-sm">{activity.description}</p>
+                <p className="text-slate-500 text-sm">{activity.timestamp}</p>
+                
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
