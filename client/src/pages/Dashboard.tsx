@@ -20,18 +20,38 @@ const [statsState, setStatsState] = useState({
 
 const [activities, setActivities] = useState<any[]>([]);
 
+// Dummy data used during development / when API is not available
+const dummyPostsData = [
+  { id: 1, status: "scheduled" },
+  { id: 2, status: "published" },
+  { id: 3, status: "scheduled" }
+];
+
+const dummyAccountsData = [
+  { id: "acc1" },
+  { id: "acc2" }
+];
+
+const dummyActivities = [
+  { _id: "a1", createdAt: new Date().toISOString(), description: "Published post: Welcome to our new app", timestamp: "Just now" },
+  { _id: "a2", createdAt: new Date().toISOString(), description: "Scheduled post: New feature announcement", timestamp: "2h ago" }
+];
+
 useEffect(()=>{
 
   const fetchDashboardData = async () => {
     try {
-      const [postsRes, accountsRes,activityRes] = [{data: dummyPostsData}, {data: dummyAccountsData}, {data: dummyActivityData}]; // Replace with actual API calls
+      // Replace the following with real API calls when available
+      const [postsRes, accountsRes] = [{data: dummyPostsData}, {data: dummyAccountsData}];
       const posts = postsRes.data;
 
-      setStats({
+      setStatsState({
         scheduled: posts.filter((post: any) => post.status === "scheduled").length,
         published: posts.filter((post: any) => post.status === "published").length,
         connectedAccounts: accountsRes.data.length
       });
+
+      setActivities(dummyActivities);
 
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
