@@ -34,6 +34,7 @@ const Accounts = () => {
     setAccounts(dummyAccounts);
   }, []);
 
+  // Handler to disconnect an account
   const handleDisconnect = (accountId: string) => {
     setAccounts(accounts.filter(acc => acc.id !== accountId));
   };
@@ -69,7 +70,7 @@ const Accounts = () => {
             {accounts.length} of {PLATFORMS.length} accounts connected
           </p>
         </div>
-        <button className="inline-flex items-center gap-2 px-3 py-2 bg-slate-100 rounded bg-red-500 text-white hover:bg-red-600 transition-colors" onClick={()=>setShowPlatformPicker(true)}>
+        <button className="inline-flex items-center gap-2 px-3 py-2 bg-slate-100 rounded bg-red-500 text-black hover:bg-red-600 transition-colors" onClick={()=>setShowPlatformPicker(true)}>
           <PlusIcon className="w-4 h-4" />
           Connect New Account
         </button>
@@ -141,7 +142,8 @@ const Accounts = () => {
 
         {/* Platform Picker Modal */}
         {showPlatformPicker && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          //here we  add a modal for platform selection and background blur
+          <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-96 overflow-auto">
               {/* Modal Header */}
               <div className="flex items-center justify-between p-6 border-b border-slate-200 sticky top-0 bg-white">
