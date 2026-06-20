@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PLATFORMS } from "../assets/assets";
 import { Plus as PlusIcon, X as XIcon, Check as CheckIcon, Trash2 as TrashIcon, Loader2 as LoaderIcon } from "lucide-react";
 
@@ -9,11 +9,30 @@ interface Account {
   connectedAt: string;
 }
 
+const dummyAccounts: Account[] = [
+  {
+    id: "acc_twitter",
+    platformId: "twitter",
+    username: "socialpilot",
+    connectedAt: "2026-06-15T08:12:00.000Z",
+  },
+  {
+    id: "acc_linkedin",
+    platformId: "linkedin",
+    username: "workchamp",
+    connectedAt: "2026-06-13T14:25:00.000Z",
+  },
+];
+
 const Accounts = () => {
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [showPlatformPicker, setShowPlatformPicker] = useState(false);
+
+  useEffect(() => {
+    setAccounts(dummyAccounts);
+  }, []);
 
   const handleDisconnect = (accountId: string) => {
     setAccounts(accounts.filter(acc => acc.id !== accountId));
