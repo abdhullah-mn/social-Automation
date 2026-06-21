@@ -267,7 +267,7 @@ const Sheduler = () => {
                 <input
                   type="file"
                   multiple
-                  accept="image/*,video/*"
+                accept="imagewe/*,video/*"
                   onChange={handleMediaUpload}
                   className="hidden"
                 />
