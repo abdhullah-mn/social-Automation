@@ -2,6 +2,7 @@ import 'dotenv/config'
 import express, { Request, Response } from 'express'
 import cors from 'cors'
 import connectDB from './config/db.js'
+import authRoutes from './routes/authRoutes.js'
 
 const app = express()
 
@@ -12,6 +13,8 @@ app.use(
     origin: process.env.FRONTEND_URL,
   })
 )
+
+app.use('/api/auth', authRoutes)
 
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' })
