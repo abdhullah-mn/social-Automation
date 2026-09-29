@@ -1,5 +1,26 @@
-import { ActivityIcon, CheckCircleIcon, Clock, ClockIcon, SendIcon, Share2Icon, TrendingUpDown, UserIcon } from "lucide-react";
+import { ActivityIcon, CheckCircleIcon, ClockIcon, SendIcon, Share2Icon, TrendingUpDown } from "lucide-react";
 import { useEffect, useState } from "react";
+
+interface Activity {
+  _id: string;
+  createdAt: string;
+  description: string;
+  timestamp: string;
+}
+
+// Development fixtures remain stable across renders until the API is connected.
+const dummyPostsData = [
+  { id: 1, status: "scheduled" },
+  { id: 2, status: "published" },
+  { id: 3, status: "scheduled" }
+];
+
+const dummyAccountsData = [{ id: "acc1" }, { id: "acc2" }];
+
+const dummyActivities: Activity[] = [
+  { _id: "a1", createdAt: new Date().toISOString(), description: "Published post: Welcome to our new app", timestamp: "Just now" },
+  { _id: "a2", createdAt: new Date().toISOString(), description: "Scheduled post: New feature announcement", timestamp: "2h ago" }
+];
 
 const Dashboard = () => {
   //idea behind this is to show a greeting based on the time of day, and then show some stats about the user's social media accounts. For now, we'll just show the greeting and a placeholder for the stats.
@@ -35,24 +56,7 @@ const [statsState, setStatsState] = useState({
   connectedAccounts: 0
 });
 
-const [activities, setActivities] = useState<any[]>([]);
-
-// Dummy data used during development / when API is not available
-const dummyPostsData = [
-  { id: 1, status: "scheduled" },
-  { id: 2, status: "published" },
-  { id: 3, status: "scheduled" }
-];
-
-const dummyAccountsData = [
-  { id: "acc1" },
-  { id: "acc2" }
-];
-
-const dummyActivities = [
-  { _id: "a1", createdAt: new Date().toISOString(), description: "Published post: Welcome to our new app", timestamp: "Just now" },
-  { _id: "a2", createdAt: new Date().toISOString(), description: "Scheduled post: New feature announcement", timestamp: "2h ago" }
-];
+const [activities, setActivities] = useState<Activity[]>([]);
 
 useEffect(()=>{
 
@@ -63,8 +67,8 @@ useEffect(()=>{
       const posts = postsRes.data;
 
       setStatsState({
-        scheduled: posts.filter((post: any) => post.status === "scheduled").length,
-        published: posts.filter((post: any) => post.status === "published").length,
+        scheduled: posts.filter((post) => post.status === "scheduled").length,
+        published: posts.filter((post) => post.status === "published").length,
         connectedAccounts: accountsRes.data.length
       });
 

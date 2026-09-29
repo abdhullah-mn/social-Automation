@@ -9,7 +9,6 @@ import {
   Edit as EditIcon,
   Plus as PlusIcon,
   Loader2 as LoaderIcon,
-  CheckCircle as CheckCircleIcon,
 } from "lucide-react";
 
 // Define the ScheduledPost type

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PLATFORMS } from "../assets/assets";
 import { Plus as PlusIcon, X as XIcon, Check as CheckIcon, Trash2 as TrashIcon, Loader2 as LoaderIcon } from "lucide-react";
 
@@ -26,17 +26,13 @@ const dummyAccounts: Account[] = [
 
 const Accounts = () => {
 
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>(dummyAccounts);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [showPlatformPicker, setShowPlatformPicker] = useState(false);
 
-  useEffect(() => {
-    setAccounts(dummyAccounts);
-  }, []);
-
   // Handler to disconnect an account
   const handleDisconnect = (accountId: string) => {
-    setAccounts(accounts.filter(acc => acc.id !== accountId));
+    setAccounts((current) => current.filter(acc => acc.id !== accountId));
   };
 
   const handleConnectPlatform = async (platformId: string) => {
@@ -46,13 +42,13 @@ const Accounts = () => {
     await new Promise(resolve => setTimeout(resolve, 1200));
     
     const newAccount: Account = {
-      id: `acc_${Date.now()}`,
+      id: `acc_${crypto.randomUUID()}`,
       platformId,
       username: `user_${platformId}`,
       connectedAt: new Date().toISOString()
     };
     
-    setAccounts([...accounts, newAccount]);
+    setAccounts((current) => [...current, newAccount]);
     setConnecting(null);
     setShowPlatformPicker(false);
   };

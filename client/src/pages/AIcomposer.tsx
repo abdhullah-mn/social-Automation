@@ -4,7 +4,6 @@ import {
   Copy,
   RefreshCw,
   Calendar,
-  Clock,
   Loader2,
   X,
 } from "lucide-react";
@@ -36,6 +35,12 @@ const dummyGenerationData: Generation[] = [
 ];
 
 const AIcomposer = () => {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [prompt, setPrompt] = useState("");
   const [generatedContent, setGeneratedContent] = useState("");
   const [generating, setGenerating] = useState<Generation[]>([]);
@@ -78,7 +83,7 @@ const AIcomposer = () => {
 
   const formatRelativeTime = (dateString: string) => {
     const then = new Date(dateString).getTime();
-    const diffSeconds = Math.floor((Date.now() - then) / 1000);
+    const diffSeconds = Math.floor((now - then) / 1000);
     if (diffSeconds < 60) return "Just now";
     if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
     if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;

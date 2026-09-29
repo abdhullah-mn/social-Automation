@@ -1,11 +1,12 @@
 import { CalendarDaysIcon, LayoutDashboardIcon, LogOutIcon, UserIcon, Wand2Icon } from "lucide-react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
 
 const Sidebar = ({isOpen, setIsOpen} : {isOpen: boolean, setIsOpen: (isOpen: boolean) => void}) => {
+    const navigate = useNavigate();
     const {logout, user} = {
         logout: ()=>{
-            window.location.href = "/";
+            navigate("/");
         },
         user:{
             name: "Abdullah Noufal",
@@ -44,7 +45,6 @@ const Sidebar = ({isOpen, setIsOpen} : {isOpen: boolean, setIsOpen: (isOpen: boo
     <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
       {navigationItems.map((item) => {
         const isActive = location.pathname === item.path;
-        const Icon = item.icon;
 
         return (
 
