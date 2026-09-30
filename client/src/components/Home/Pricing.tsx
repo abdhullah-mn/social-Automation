@@ -9,6 +9,7 @@ const pricingPlans = [
         description: "Perfect for creators just getting started with social media automation.",
         features: ["2 social accounts", "10 scheduled posts/month", "AI content (5 credits/mo)", "Basic dashboard"],
         cta: "Get Started Free",
+        to: "/login?mode=signup&plan=starter",
         highlight: false,
     },
     {
@@ -18,6 +19,7 @@ const pricingPlans = [
         description: "Everything you need to grow and automate your social presence.",
         features: ["Unlimited accounts", "Unlimited scheduling", "AI content (200 credits/mo)", "Priority support"],
         cta: "Start 14-day Free Trial",
+        to: "/login?mode=signup&plan=pro",
         highlight: true,
     },
     {
@@ -26,7 +28,8 @@ const pricingPlans = [
         period: "/month",
         description: "For teams and agencies managing multiple brands at scale.",
         features: ["Everything in Pro", "5 team members", "Unlimited AI credits", "Custom AI personas", "Dedicated support"],
-        cta: "Contact Sales",
+        cta: "Get Started",
+        to: "/login?mode=signup&plan=agency",
         highlight: false,
     },
 ];
@@ -72,7 +75,7 @@ export default function Pricing() {
                                 ))}
                             </ul>
 
-                            <Link to="/#" className={`mt-auto text-center font-semibold text-sm px-6 py-3 rounded-full ${plan.highlight ? "bg-white text-red-500 hover:bg-red-50" : "bg-red-500 text-white hover:bg-red-600"}`}>
+                            <Link to={plan.to} className={`mt-auto text-center font-semibold text-sm px-6 py-3 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red-600 ${plan.highlight ? "bg-white text-red-500 hover:bg-red-50" : "bg-red-500 text-white hover:bg-red-600"}`}>
                                 {plan.cta}
                             </Link>
                         </div>

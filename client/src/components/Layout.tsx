@@ -7,7 +7,7 @@ import { useLocation } from "react-router-dom";
 const pageTitles: Record<string, string> = {
     "/dashboard": "Dashboard",
     "/accounts": "Social Accounts",
-    "/shedule": "Sheduler",
+    "/scheduler": "Scheduler",
     "/ai-composer": "AI Composer"
 };// This object maps route paths to their corresponding page titles
 

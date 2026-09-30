@@ -1,19 +1,22 @@
 import { CalendarDaysIcon, LayoutDashboardIcon, LogOutIcon, UserIcon, Wand2Icon } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useSession } from "../hooks/useSession";
+import { signOut } from "../lib/api";
 
 
 const Sidebar = ({isOpen, setIsOpen} : {isOpen: boolean, setIsOpen: (isOpen: boolean) => void}) => {
     const navigate = useNavigate();
-    const {logout, user} = {
-        logout: ()=>{
-            navigate("/");
-        },
-        user:{
-            name: "Abdullah Noufal",
-            email:"abdullah.noufal@example.com"
-        }
-
-    }
+    const { user } = useSession();
+    const [logoutError, setLogoutError] = useState("");
+    const [loggingOut, setLoggingOut] = useState(false);
+    const logout = async () => {
+        setLoggingOut(true);
+        setLogoutError("");
+        try { await signOut(); navigate("/", { replace: true }); }
+        catch { setLogoutError("Could not sign out. Please try again."); }
+        finally { setLoggingOut(false); }
+    };
   
   
     const location = useLocation();
@@ -22,7 +25,7 @@ const Sidebar = ({isOpen, setIsOpen} : {isOpen: boolean, setIsOpen: (isOpen: boo
   const navigationItems = [
     { name: "Dashboard", icon: LayoutDashboardIcon, path: "/dashboard" },
     { name: "Social Accounts", icon: UserIcon, path: "/accounts" },
-    { name: "Sheduler", icon:CalendarDaysIcon, path: "/shedule" },
+    { name: "Scheduler", icon:CalendarDaysIcon, path: "/scheduler" },
     { name: "AI Composer", icon: Wand2Icon, path: "/ai-composer" },
   ];
 
@@ -80,12 +83,14 @@ const Sidebar = ({isOpen, setIsOpen} : {isOpen: boolean, setIsOpen: (isOpen: boo
         </div>
         {/*logout button*/}
         <button 
+            disabled={loggingOut}
             onClick={logout}
             className="mt-1 w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-slate-500 hover:text-red-500 hover:bg-red-50 transition-all duration-150"
             title="Logout">
             <LogOutIcon className="size-4" />
-            SignOut
+            {loggingOut ? "Signing out…" : "Sign Out"}
         </button>
+        {logoutError && <p role="alert" className="text-xs text-red-600">{logoutError}</p>}
 
 
     </div>

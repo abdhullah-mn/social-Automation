@@ -1,467 +1,157 @@
-import { useEffect, useState } from "react";
-import { PLATFORMS } from "../assets/assets";
-import {
-  Calendar as CalendarIcon,
-  Clock as ClockIcon,
-  Image as ImageIcon,
-  X as XIcon,
-  Trash2 as TrashIcon,
-  Edit as EditIcon,
-  Plus as PlusIcon,
-  Loader2 as LoaderIcon,
-} from "lucide-react";
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
+import { Calendar, Send, RefreshCw, X } from 'lucide-react'
+import { api, uploadMedia, type SocialAccount, type SocialPost, type UploadedMedia } from '../lib/api'
 
-// Define the ScheduledPost type
-interface ScheduledPost {
-  id: string;
-  content: string;
-  platforms: string[];
-  mediaUrls: string[];
-  scheduleDate: string;
-  scheduleTime: string;
-  status: "draft" | "scheduled" | "published" | "failed";
-}
+const button = 'rounded-lg px-4 py-2 border border-slate-200 text-sm disabled:opacity-50 hover:bg-slate-50'
+type Mode = 'draft' | 'now' | 'schedule'
+interface Submission { requestId: string; content: string; accountIds: string[]; mediaIds: string[]; mode: Mode; scheduledFor?: string; timezone: string }
 
-const dummyPostData: ScheduledPost[] = [
-  {
-    id: "post_1",
-    content: "Just launched our new feature! Check it out 🚀",
-    platforms: ["twitter", "linkedin"],
-    mediaUrls: ["img1.jpg"],
-    scheduleDate: "2026-06-25",
-    scheduleTime: "10:00",
-    status: "scheduled",
-  },
-  {
-    id: "post_2",
-    content: "Working on something cool today",
-    platforms: ["instagram"],
-    mediaUrls: [],
-    scheduleDate: "2026-06-22",
-    scheduleTime: "15:30",
-    status: "draft",
-  },
-  {
-    id: "post_3",
-    content: "Thanks everyone for the amazing feedback!",
-    platforms: ["facebook", "twitter"],
-    mediaUrls: [],
-    scheduleDate: "2026-06-18",
-    scheduleTime: "09:00",
-    status: "published",
-  },
-];
-
-const Sheduler = () => {
-
-  const [posts, setPosts] = useState<ScheduledPost[]>([]);
-  const [content, setContent] = useState("");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-  const [scheduledTime, setScheduledTime] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [sheduleDate, setSheduleDate] = useState("");
-  const [mediafiles, setMediaFiles] = useState<File[]>([]);
-  const [error, setError] = useState("");
-  const [editingPostId, setEditingPostId] = useState<string | null>(null);
-
-  const fetchPosts = async () => {
-    setPosts(dummyPostData);
-  };
+export default function Scheduler() {
+  const location = useLocation()
+  const [content, setContent] = useState(() => typeof location.state?.content === 'string' ? location.state.content : '')
+  const [accounts, setAccounts] = useState<SocialAccount[]>([])
+  const [posts, setPosts] = useState<SocialPost[]>([])
+  const [accountIds, setAccountIds] = useState<string[]>([])
+  const [media, setMedia] = useState<UploadedMedia[]>([])
+  const [schedule, setSchedule] = useState(() => typeof location.state?.schedule === 'string' ? location.state.schedule : '')
+  const [busy, setBusy] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [pending, setPending] = useState<Submission | null>(null)
+  const [reschedulingId, setReschedulingId] = useState('')
+  const [rescheduleTime, setRescheduleTime] = useState('')
+  const submitting = useRef(false)
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
   useEffect(() => {
-    (async () => await fetchPosts())();
-  }, []);
+    let active = true
+    Promise.all([api<{ accounts: SocialAccount[] }>('/accounts'), api<{ posts: SocialPost[] }>('/posts')])
+      .then(([a, p]) => { if (active) { setAccounts(a.accounts); setPosts(p.posts) } })
+      .catch((failure: Error) => { if (active) setError(failure.message) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [])
 
-  // Toggle platform selection
-  const togglePlatform = (platformId: string) => {
-    setSelectedPlatforms((prev) =>
-      prev.includes(platformId)
-        ? prev.filter((p) => p !== platformId)
-        : [...prev, platformId]
-    );
-  };
-
-  // Handle media file upload
-  const handleMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.currentTarget.files;
-    if (files) {
-      setMediaFiles((prev) => [...prev, ...Array.from(files)]);
-    }
-  };
-
-  // Remove media file
-  const removeMediaFile = (index: number) => {
-    setMediaFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  // Validate and submit
-  const handleSubmit = async (asDraft: boolean) => {
-    setError("");
-
-    // Validation
-    if (!content.trim()) {
-      setError("Post content cannot be empty");
-      return;
-    }
-    if (selectedPlatforms.length === 0) {
-      setError("Select at least one platform");
-      return;
-    }
-    if (!asDraft) {
-      if (!sheduleDate || !scheduledTime) {
-        setError("Date and time are required for scheduling");
-        return;
+  function upsert(post: SocialPost) { setPosts((current) => [post, ...current.filter((p) => p.id !== post.id)]) }
+  async function refreshList() {
+    setBusy('refresh'); setError('')
+    try {
+      const [p, a] = await Promise.all([api<{ posts: SocialPost[] }>('/posts'), api<{ accounts: SocialAccount[] }>('/accounts')])
+      setPosts(p.posts); setAccounts(a.accounts)
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to load posts') }
+    finally { setBusy(''); setLoading(false) }
+  }
+  async function upload(files: FileList | null) {
+    if (!files) return
+    setBusy('upload'); setError('')
+    try {
+      if (media.length + files.length > 10) throw new Error('Attach at most 10 files.')
+      for (const file of Array.from(files)) {
+        const uploaded = await uploadMedia(file)
+        setMedia((current) => [...current, uploaded])
       }
-      const selectedDateTime = new Date(`${sheduleDate}T${scheduledTime}`);
-      if (selectedDateTime <= new Date()) {
-        setError("Cannot schedule for a past date/time");
-        return;
-      }
-    }
-
-    setLoading(true);
-    // Simulate submission
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    const newPost: ScheduledPost = {
-      id: editingPostId || `post_${Date.now()}`,
-      content,
-      platforms: selectedPlatforms,
-      mediaUrls: mediafiles.map((f) => f.name),
-      scheduleDate: sheduleDate,
-      scheduleTime: scheduledTime,
-      status: asDraft ? "draft" : "scheduled",
-    };
-
-    if (editingPostId) {
-      setPosts((prev) => prev.map((p) => (p.id === editingPostId ? newPost : p)));
-      setEditingPostId(null);
-    } else {
-      setPosts((prev) => [...prev, newPost]);
-    }
-
-    // Reset form
-    setContent("");
-    setSelectedPlatforms([]);
-    setSheduleDate("");
-    setScheduledTime("");
-    setMediaFiles([]);
-    setLoading(false);
-  };
-
-  // Edit post
-  const handleEditPost = (post: ScheduledPost) => {
-    setContent(post.content);
-    setSelectedPlatforms(post.platforms);
-    setSheduleDate(post.scheduleDate);
-    setScheduledTime(post.scheduleTime);
-    setEditingPostId(post.id);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  // Delete post
-  const handleDeletePost = (postId: string) => {
-    setPosts((prev) => prev.filter((p) => p.id !== postId));
-  };
-
-  // Get status counts
-  const statusCounts = {
-    scheduled: posts.filter((p) => p.status === "scheduled").length,
-    draft: posts.filter((p) => p.status === "draft").length,
-    published: posts.filter((p) => p.status === "published").length,
-    failed: posts.filter((p) => p.status === "failed").length,
-  };
-
-  // Get today's date string
-  const getTodayDateString = () => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
-  };
-
-  // Sort posts by date descending
-  const sortedPosts = [...posts].sort(
-    (a, b) =>
-      new Date(`${b.scheduleDate}T${b.scheduleTime}`).getTime() -
-      new Date(`${a.scheduleDate}T${a.scheduleTime}`).getTime()
-  );
-
-  return (
-    <div className="space-y-8 max-w-6xl mx-auto p-4">
-      {/* Header */}
-      <div className="flex items-start justify-between flex-col sm:flex-row gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Scheduler</h1>
-          <p className="text-slate-500 text-sm mt-1">
-            {statusCounts.scheduled} scheduled, {statusCounts.draft} draft,{" "}
-            {statusCounts.published} published
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Compose Panel */}
-        <div className="lg:col-span-1">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm sticky top-4">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">
-              {editingPostId ? "Edit Post" : "Create New Post"}
-            </h2>
-
-            {/* Content Textarea */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Post Content
-              </label>
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="What's on your mind?"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
-                rows={4}
-              />
-              <div className="flex justify-between mt-1">
-                <span className="text-xs text-slate-500">{content.length} characters</span>
-                <span className={`text-xs ${content.length > 280 ? "text-red-500" : "text-slate-500"}`}>
-                  {280 - content.length} remaining
-                </span>
-              </div>
-            </div>
-
-            {/* Platform Selector */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Platforms
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {PLATFORMS.map((platform) => {
-                  const Icon = platform.icon;
-                  const isSelected = selectedPlatforms.includes(platform.id);
-                  return (
-                    <button
-                      key={platform.id}
-                      onClick={() => togglePlatform(platform.id)}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        isSelected
-                          ? "bg-red-500 text-white"
-                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                      }`}
-                    >
-                      <Icon className="size-3.5" />
-                      {platform.name.split(" ")[0]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Media Upload */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Media
-              </label>
-              <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-lg p-4 cursor-pointer hover:border-red-500 transition-colors">
-                <ImageIcon className="size-6 text-slate-400 mb-2" />
-                <span className="text-xs text-slate-600 text-center">
-                  Drag or click to upload
-                </span>
-                <input
-                  type="file"
-                  multiple
-                accept="imagewe/*,video/*"
-                  onChange={handleMediaUpload}
-                  className="hidden"
-                />
-              </label>
-              {mediafiles.length > 0 && (
-                <div className="mt-2 space-y-2">
-                  {mediafiles.map((file, idx) => (
-                    <div key={idx} className="flex items-center justify-between bg-slate-50 p-2 rounded">
-                      <span className="text-xs text-slate-700 truncate">{file.name}</span>
-                      <button
-                        onClick={() => removeMediaFile(idx)}
-                        className="text-slate-400 hover:text-red-500"
-                      >
-                        <XIcon className="size-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Date & Time */}
-            <div className="mb-4 space-y-2">
-              <label className="block text-sm font-medium text-slate-700">
-                Schedule Date
-              </label>
-              <input
-                type="date"
-                value={sheduleDate}
-                onChange={(e) => setSheduleDate(e.target.value)}
-                min={getTodayDateString()}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-              />
-            </div>
-
-            <div className="mb-4 space-y-2">
-              <label className="block text-sm font-medium text-slate-700">
-                Schedule Time
-              </label>
-              <input
-                type="time"
-                value={scheduledTime}
-                onChange={(e) => setScheduledTime(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-              />
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-xs text-red-700">{error}</p>
-              </div>
-            )}
-
-            {/* Submit Buttons */}
-            <div className="space-y-2">
-              <button
-                onClick={() => handleSubmit(false)}
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed font-medium"
-              >
-                {loading ? <LoaderIcon className="size-4 animate-spin" /> : <CalendarIcon className="size-4" />}
-                {editingPostId ? "Update Schedule" : "Schedule Post"}
-              </button>
-              <button
-                onClick={() => handleSubmit(true)}
-                disabled={loading}
-                className="w-full px-4 py-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed font-medium text-sm"
-              >
-                Save as Draft
-              </button>
-              {editingPostId && (
-                <button
-                  onClick={() => {
-                    setEditingPostId(null);
-                    setContent("");
-                    setSelectedPlatforms([]);
-                    setSheduleDate("");
-                    setScheduledTime("");
-                    setMediaFiles([]);
-                    setError("");
-                  }}
-                  className="w-full px-4 py-2 bg-slate-50 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors font-medium text-sm"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Upload failed') }
+    finally { setBusy('') }
+  }
+  async function send(submission: Submission) {
+    if (submitting.current) return
+    submitting.current = true; setBusy('submit'); setError(''); setNotice(''); setPending(submission)
+    try {
+      const { post } = await api<{ post: SocialPost }>('/posts', { method: 'POST', body: JSON.stringify(submission) })
+      upsert(post); setPending(null); setContent(''); setAccountIds([]); setMedia([]); setSchedule('')
+      setNotice(`Post status: ${post.status}. See account results below.`)
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Unable to submit post')
+      // Retain this exact request for timeout recovery without double publishing.
+      try { setPosts((await api<{ posts: SocialPost[] }>('/posts')).posts) } catch { /* original error remains visible */ }
+    } finally { submitting.current = false; setBusy('') }
+  }
+  async function submit(mode: Mode) {
+    if (mode !== 'draft' && !accountIds.length) { setError('Select at least one connected account.'); return }
+    if (!content.trim() && !media.length) { setError('Write a post or attach media.'); return }
+    if (mode === 'schedule' && (!schedule || new Date(schedule).getTime() < Date.now() + 60000)) { setError('Choose a time at least one minute in the future.'); return }
+    await send({ requestId: crypto.randomUUID(), content, accountIds, mediaIds: media.map((m) => m.id), mode,
+      ...(mode === 'schedule' ? { scheduledFor: new Date(schedule).toISOString() } : {}), timezone })
+  }
+  async function postAction(post: SocialPost, cancel = false) {
+    if (cancel && !window.confirm('Cancel this draft or scheduled post?')) return
+    setBusy(post.id); setError('')
+    try { upsert((await api<{ post: SocialPost }>(`/posts/${post.id}${cancel ? '' : '/refresh'}`, { method: cancel ? 'DELETE' : 'POST' })).post) }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to update post') }
+    finally { setBusy('') }
+  }
+  function loadDraft(post: SocialPost) {
+    setContent(post.content); setAccountIds(post.accountIds); setPending(null); setSchedule('')
+    setMedia(post.mediaItems.map((m, i) => ({ ...m, id: post.mediaIds[i], type: m.type === 'video' ? 'video' : 'image' })))
+    setNotice('Draft loaded into the composer. Submitting creates a new post; the original draft remains available.')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  async function reschedulePost(post: SocialPost) {
+    if (!rescheduleTime || new Date(rescheduleTime).getTime() < Date.now() + 60000) { setError('Choose a future time.'); return }
+    setBusy(post.id); setError('')
+    try {
+      const result = await api<{ post: SocialPost }>(`/posts/${post.id}/schedule`, { method: 'PATCH',
+        body: JSON.stringify({ scheduledFor: new Date(rescheduleTime).toISOString(), timezone }) })
+      upsert(result.post); setReschedulingId(''); setRescheduleTime('')
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to reschedule. Refresh status before retrying.') }
+    finally { setBusy('') }
+  }
+  return <div className="max-w-6xl mx-auto space-y-6">
+    <div className="flex justify-between gap-3"><div><h2 className="text-2xl font-semibold">Create and schedule posts</h2><p className="text-sm text-slate-500">Times shown in {timezone}</p></div><button className={button} onClick={refreshList} disabled={!!busy}><RefreshCw size={16} className="inline mr-2" />Refresh list</button></div>
+    {error && <p role="alert" className="bg-red-50 text-red-700 p-4 rounded-xl">{error}</p>}
+    {notice && <p role="status" className="bg-blue-50 text-blue-800 p-4 rounded-xl">{notice}</p>}
+    <div className="grid lg:grid-cols-2 gap-6">
+      <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5 h-fit">
+        <fieldset disabled={!!busy || !!pending} className="space-y-5 disabled:opacity-60">
+          <legend className="font-semibold mb-3">Compose a post</legend>
+          <label className="block text-sm">Post content<textarea value={content} onChange={(e) => setContent(e.target.value)} rows={6} maxLength={60000} className="mt-2 w-full border border-slate-300 rounded-xl p-3" placeholder="What would you like to share?" /></label>
+          <div><h3 className="text-sm font-medium mb-2">Publish to</h3>
+            {!accounts.some((a) => a.status === 'Connected') && <p className="text-sm text-slate-500"><Link className="underline text-red-600" to="/accounts">Connect an account</Link> before publishing.</p>}
+            <div className="space-y-2">{accounts.filter((a) => a.status === 'Connected').map((account) => <label key={account.id} className="flex gap-3 items-center rounded-lg border p-3 text-sm">
+              <input type="checkbox" checked={accountIds.includes(account.id)} onChange={() => setAccountIds((ids) => ids.includes(account.id) ? ids.filter((id) => id !== account.id) : [...ids, account.id])} />
+              <span>{account.username} <span className="text-slate-500">({account.platformId})</span></span>
+            </label>)}</div>
           </div>
-        </div>
-
-        {/* Posts List */}
-        <div className="lg:col-span-2 space-y-4">
-          {loading && posts.length === 0 ? (
-            <div className="flex items-center justify-center h-40">
-              <LoaderIcon className="size-8 text-slate-400 animate-spin" />
-            </div>
-          ) : sortedPosts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 px-6 bg-slate-50 border border-slate-200 rounded-2xl">
-              <div className="flex items-center justify-center mb-4 size-16 bg-slate-100 rounded-full">
-                <PlusIcon className="size-8 text-slate-400" />
-              </div>
-              <h3 className="text-lg font-medium text-slate-800 mt-2">No posts yet</h3>
-              <p className="text-slate-500 text-sm mt-1 text-center">
-                Create your first post using the composer on the left
-              </p>
-            </div>
-          ) : (
-            sortedPosts.map((post) => {
-              const statusColors = {
-                draft: "bg-slate-100 text-slate-700",
-                scheduled: "bg-blue-50 text-blue-700",
-                published: "bg-green-50 text-green-700",
-                failed: "bg-red-50 text-red-700",
-              };
-              const postDate = new Date(`${post.scheduleDate}T${post.scheduleTime}`);
-              const isToday =
-                postDate.toDateString() === new Date().toDateString();
-
-              return (
-                <div
-                  key={post.id}
-                  className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-slate-800 text-sm line-clamp-2">{post.content}</p>
-                    </div>
-                    <span
-                      className={`ml-3 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
-                        statusColors[post.status]
-                      }`}
-                    >
-                      {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
-                    </span>
-                  </div>
-
-                  {/* Platforms */}
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {post.platforms.map((platformId) => {
-                      const platform = PLATFORMS.find((p) => p.id === platformId);
-                      const Icon = platform?.icon;
-                      return Icon ? (
-                        <div
-                          key={platformId}
-                          className="size-7 flex items-center justify-center bg-slate-100 rounded text-slate-600"
-                        >
-                          <Icon className="size-4" />
-                        </div>
-                      ) : null;
-                    })}
-                    {post.mediaUrls.length > 0 && (
-                      <div className="size-7 flex items-center justify-center bg-slate-100 rounded text-slate-600 text-xs font-medium">
-                        {post.mediaUrls.length}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Date & Time */}
-                  <div className="flex items-center gap-4 text-xs text-slate-500 mb-3">
-                    <div className="flex items-center gap-1">
-                      <CalendarIcon className="size-3.5" />
-                      {isToday ? "Today" : postDate.toLocaleDateString()}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <ClockIcon className="size-3.5" />
-                      {post.scheduleTime}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleEditPost(post)}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-sm font-medium"
-                    >
-                      <EditIcon className="size-4" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeletePost(post.id)}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm font-medium"
-                    >
-                      <TrashIcon className="size-4" />
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
+          <label className="block text-sm">Images or video<input type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4" onChange={(e) => { void upload(e.target.files); e.target.value = '' }} className="block mt-2 w-full text-sm" /></label>
+          <p className="text-xs text-slate-500">Up to 10 files, 50 MB each. Instagram needs media. Each platform may impose additional format limits. Media posts can be scheduled within six days of upload.</p>
+          <ul className="space-y-2">{media.map((item) => <li key={item.id} className="flex gap-2 text-sm items-center"><span className="truncate flex-1">{item.filename}</span><button type="button" aria-label={`Remove ${item.filename}`} onClick={() => setMedia((current) => current.filter((m) => m.id !== item.id))}><X size={16} /></button></li>)}</ul>
+          <label className="block text-sm">Scheduled time ({timezone})<input type="datetime-local" value={schedule} onChange={(e) => setSchedule(e.target.value)} className="block border rounded-lg p-2 mt-2 w-full" /></label>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => submit('now')} className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"><Send size={16} className="inline mr-2" />Publish now</button>
+            <button onClick={() => submit('schedule')} className={button}><Calendar size={16} className="inline mr-2" />Schedule</button>
+            <button onClick={() => submit('draft')} className={button}>Save draft</button>
+          </div>
+        </fieldset>
+        {busy === 'upload' && <p role="status">Uploading media…</p>}
+        {busy === 'submit' && <p role="status">Submitting post. Publishing can take a moment…</p>}
+        {pending && !busy && <div className="rounded-xl bg-amber-50 p-4 space-y-3 text-sm"><p>The submission did not complete in this browser. Retry the same request to avoid duplicates, or refresh the post status below.</p>
+          <button className={button} onClick={() => send(pending)}>Retry same submission</button>
+          <button className={`${button} ml-2`} onClick={() => { if (window.confirm('Starting a new submission can create a duplicate if the previous one was accepted. Have you checked its status?')) setPending(null) }}>Edit as new submission</button></div>}
+      </section>
+      <section className="space-y-4"><h3 className="font-semibold">Your posts</h3>
+        {loading ? <p role="status">Loading posts…</p> : !posts.length && <p className="text-slate-500">Your drafts, scheduled posts, and published posts will appear here.</p>}
+        {posts.map((post) => <article key={post.id} className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+          <div className="flex justify-between gap-3"><span className="capitalize text-sm font-medium">{post.status}</span><time className="text-xs text-slate-500">{post.scheduledFor ? new Date(post.scheduledFor).toLocaleString() : new Date(post.createdAt).toLocaleString()}</time></div>
+          <p className="whitespace-pre-wrap break-words text-sm">{post.content}</p>
+          {post.mediaItems.length > 0 && <p className="text-xs text-slate-500">{post.mediaItems.length} media attachment(s)</p>}
+          {post.error && <p className="text-sm text-red-700">{post.error}</p>}
+          <ul className="space-y-2">{post.results.map((result, i) => <li key={`${result.accountId}-${i}`} className="text-sm border-t pt-2">
+            <span className="capitalize">{result.platform}: {result.status}</span>{result.error && <p className="text-red-700">{result.error}</p>}
+            {result.url?.startsWith('https://') && <a className="block underline text-red-600" href={result.url} target="_blank" rel="noreferrer">View published post</a>}
+          </li>)}</ul>
+          <div className="flex flex-wrap gap-2">
+            {post.status !== 'cancelled' && <button disabled={!!busy} className={button} onClick={() => postAction(post)}>Refresh status</button>}
+            {['draft', 'scheduled'].includes(post.status) && <button disabled={!!busy} className={button} onClick={() => postAction(post, true)}>Cancel</button>}
+            {post.status === 'scheduled' && <button disabled={!!busy} className={button} onClick={() => { setReschedulingId(post.id); setRescheduleTime('') }}>Reschedule</button>}
+            {post.status === 'draft' && <button disabled={!!busy || !!pending} className={button} onClick={() => loadDraft(post)}>Use draft</button>}
+            {['unconfirmed', 'pending'].includes(post.status) && <button disabled={!!busy || !!pending} className={button} onClick={() => send({ requestId: post.requestId, content: post.content, accountIds: post.accountIds, mediaIds: post.mediaIds, mode: post.mode, timezone: post.timezone, ...(post.scheduledFor ? { scheduledFor: post.scheduledFor } : {}) })}>Retry same submission</button>}
+          </div>
+          {reschedulingId === post.id && <div className="flex flex-wrap gap-2 items-center"><label className="text-sm">New time ({timezone})<input type="datetime-local" value={rescheduleTime} onChange={(e) => setRescheduleTime(e.target.value)} className="block border rounded p-2" /></label>
+            <button disabled={!!busy} className={button} onClick={() => reschedulePost(post)}>Save time</button><button disabled={!!busy} className={button} onClick={() => setReschedulingId('')}>Close</button></div>}
+        </article>)}
+      </section>
     </div>
-  );
-};
-
-export default Sheduler;
+  </div>
+}

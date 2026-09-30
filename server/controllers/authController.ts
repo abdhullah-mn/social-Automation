@@ -1,154 +1,103 @@
-// Use require and any to avoid missing type declarations for bcrypt and jsonwebtoken
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-import { Request, Response, NextFunction } from 'express'
+import bcrypt from 'bcrypt'
+import type { Request, Response, NextFunction } from 'express'
 import User from '../models/User.js'
+import type { AuthRequest } from '../middleware/requireAuth.js'
+import { cookieOptions, createAccessToken, createRefreshToken, readRefreshCookie,
+  refreshMaxAge, tokenHash, verifyToken } from '../config/auth.js'
 
-type UserDocument = {
-  _id: any
-  name: string
-  email: string
-  passwordHash: string
-  refreshTokens: string[]
-  save: () => Promise<any>
+function userPayload(user: { _id: { toString(): string }; name: string; email: string }) {
+  return { id: user._id.toString(), name: user.name, email: user.email }
 }
 
-const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET as string
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET as string
-
-function createAccessToken(userId: string) {
-  return jwt.sign({ id: userId }, JWT_ACCESS_SECRET, { expiresIn: '15m' })
+function credentials(body: unknown) {
+  if (!body || typeof body !== 'object') return null
+  const { email, password } = body as Record<string, unknown>
+  if (typeof email !== 'string' || typeof password !== 'string') return null
+  const normalizedEmail = email.trim().toLowerCase()
+  if (normalizedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
+      !password.length || Buffer.byteLength(password, 'utf8') > 72) return null
+  return { email: normalizedEmail, password }
 }
 
-function createRefreshToken(userId: string) {
-  return jwt.sign({ id: userId }, JWT_REFRESH_SECRET, { expiresIn: '7d' })
-}
-
-function getCookieToken(req: Request) {
-  return (req as Request & { cookies?: Record<string, string> }).cookies?.refreshToken
-}
-
-function createUserPayload(user: { _id: any; name: string; email: string }) {
-  return {
-    id: user._id.toString(),
-    name: user.name,
-    email: user.email,
-  }
+function setRefreshCookie(res: Response, token: string) {
+  res.cookie('refreshToken', token, { ...cookieOptions(), maxAge: refreshMaxAge })
 }
 
 export async function register(req: Request, res: Response, next: NextFunction) {
   try {
-    const { name, email, password } = req.body
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: 'Name, email, and password are required' })
+    const input = credentials(req.body)
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
+    if (!input || input.password.length < 8 || !name || name.length > 100) {
+      return res.status(400).json({ message: 'Provide a name (1–100 characters), valid email, and password (at least 8 characters, at most 72 UTF-8 bytes)' })
     }
-    const existingUser = await User.findOne({ email })
-    if (existingUser) {
-      return res.status(400).json({ message: 'Email already exists' })
+    if (await User.findOne({ email: input.email })) {
+      return res.status(409).json({ message: 'Email already exists' })
     }
-    const passwordHash = await bcrypt.hash(password, 10)
-    const user = new User({ name, email, passwordHash }) as unknown as UserDocument
+    const user = new User({ name, email: input.email, passwordHash: await bcrypt.hash(input.password, 12) })
     const refreshToken = createRefreshToken(user._id.toString())
-    user.refreshTokens.push(refreshToken)
+    user.refreshTokens = [tokenHash(refreshToken)]
     await user.save()
-    const accessToken = createAccessToken(user._id.toString())
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/',
-    })
-    res.status(201).json({ user: createUserPayload(user), accessToken })
-  } catch (error) {
-    next(error)
-  }
+    setRefreshCookie(res, refreshToken)
+    return res.status(201).json({ user: userPayload(user), accessToken: createAccessToken(user._id.toString()) })
+  } catch (error) { next(error) }
 }
 
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, password } = req.body
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' })
-    }
-    const user = (await User.findOne({ email })) as unknown as UserDocument | null
-    if (!user) {
+    const input = credentials(req.body)
+    if (!input) return res.status(400).json({ message: 'Valid email and password are required' })
+    const user = await User.findOne({ email: input.email }).select('+passwordHash')
+    if (!user?.passwordHash || !await bcrypt.compare(input.password, user.passwordHash)) {
       return res.status(401).json({ message: 'Invalid credentials' })
     }
-    const passwordMatches = await bcrypt.compare(password, user.passwordHash)
-    if (!passwordMatches) {
-      return res.status(401).json({ message: 'Invalid credentials' })
-    }
-    const accessToken = createAccessToken(user._id.toString())
     const refreshToken = createRefreshToken(user._id.toString())
-    user.refreshTokens.push(refreshToken)
-    await user.save()
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/',
+    // Atomic append preserves concurrent logins and bounds stored sessions.
+    await User.updateOne({ _id: user._id }, {
+      $push: { refreshTokens: { $each: [tokenHash(refreshToken)], $slice: -10 } },
     })
-    res.status(200).json({ user: createUserPayload(user), accessToken })
-  } catch (error) {
-    next(error)
-  }
+    setRefreshCookie(res, refreshToken)
+    return res.json({ user: userPayload(user), accessToken: createAccessToken(user._id.toString()) })
+  } catch (error) { next(error) }
 }
 
 export async function refresh(req: Request, res: Response, next: NextFunction) {
   try {
-    const refreshToken = getCookieToken(req)
-    if (!refreshToken) {
-      return res.status(401).json({ message: 'Refresh token missing' })
+    const token = readRefreshCookie(req)
+    if (!token) return res.status(401).json({ message: 'Refresh token missing' })
+    let id: string
+    try { id = verifyToken(token, 'refresh') }
+    catch {
+      res.clearCookie('refreshToken', cookieOptions())
+      return res.status(401).json({ message: 'Invalid or expired refresh token' })
     }
-    let payload: { id: string }
-    try {
-      payload = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as { id: string }
-    } catch {
-      return res.status(403).json({ message: 'Invalid refresh token' })
+    const replacement = createRefreshToken(id)
+    // Compare and replace atomically: a token can only be consumed once.
+    const user = await User.findOneAndUpdate({ _id: id, refreshTokens: tokenHash(token) },
+      { $set: { 'refreshTokens.$': tokenHash(replacement) } }, { returnDocument: 'after' })
+    if (!user) {
+      res.clearCookie('refreshToken', cookieOptions())
+      return res.status(401).json({ message: 'Refresh session not found' })
     }
-    const user = (await User.findById(payload.id)) as unknown as UserDocument | null
-    if (!user || !user.refreshTokens.includes(refreshToken)) {
-      return res.status(403).json({ message: 'Refresh token not recognized' })
-    }
-    const accessToken = createAccessToken(user._id.toString())
-    res.status(200).json({ accessToken })
-  } catch (error) {
-    next(error)
-  }
+    setRefreshCookie(res, replacement)
+    return res.json({ user: userPayload(user), accessToken: createAccessToken(id) })
+  } catch (error) { next(error) }
 }
 
 export async function logout(req: Request, res: Response, next: NextFunction) {
   try {
-    const refreshToken = getCookieToken(req)
-    if (refreshToken) {
-      const user = (await User.findOne({ refreshTokens: refreshToken })) as unknown as UserDocument | null
-      if (user) {
-        user.refreshTokens = user.refreshTokens.filter((token) => token !== refreshToken)
-        await user.save()
-      }
-    }
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
-      path: '/',
-    })
-    res.status(200).json({ message: 'Logged out' })
-  } catch (error) {
-    next(error)
-  }
+    const token = readRefreshCookie(req)
+    if (token) await User.updateOne({ refreshTokens: tokenHash(token) },
+      { $pull: { refreshTokens: tokenHash(token) } })
+    res.clearCookie('refreshToken', cookieOptions())
+    return res.json({ message: 'Logged out' })
+  } catch (error) { next(error) }
 }
 
-export async function getMe(req: Request, res: Response, next: NextFunction) {
+export async function getMe(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const user = (req as Request & { user?: { id: string; name: string; email: string } }).user
-    if (!user) {
-      return res.status(401).json({ message: 'Unauthorized' })
-    }
-    res.status(200).json({ user: { id: user.id, name: user.name, email: user.email } })
-  } catch (error) {
-    next(error)
-  }
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' })
+    const user = await User.findById(req.user.id)
+    if (!user) return res.status(401).json({ message: 'User no longer exists' })
+    return res.json({ user: userPayload(user) })
+  } catch (error) { next(error) }
 }

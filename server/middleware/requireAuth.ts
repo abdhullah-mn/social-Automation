@@ -1,19 +1,15 @@
-import { Request, Response, NextFunction } from 'express'
-import jwt from 'jsonwebtoken';
+import type { Request, Response, NextFunction } from 'express'
+import { verifyToken } from '../config/auth.js'
 
-const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET as string
+export type AuthRequest = Request & { user?: { id: string } }
 
-export default function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Authorization token missing' })
-  }
-  const token = authHeader.split(' ')[1]
+export default function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
+  const match = req.headers.authorization?.match(/^Bearer (\S+)$/i)
+  if (!match) return res.status(401).json({ message: 'Authorization token missing' })
   try {
-    const payload = jwt.verify(token, JWT_ACCESS_SECRET) as { id: string; iat: number; exp: number }
-    ;(req as Request & { user?: { id: string } }).user = { id: payload.id }
+    req.user = { id: verifyToken(match[1], 'access') }
     next()
   } catch {
-    res.status(403).json({ message: 'Invalid or expired token' })
+    return res.status(401).json({ message: 'Invalid or expired token' })
   }
 }

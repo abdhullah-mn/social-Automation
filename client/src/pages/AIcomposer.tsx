@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Sparkles,
   Copy,
@@ -35,6 +36,7 @@ const dummyGenerationData: Generation[] = [
 ];
 
 const AIcomposer = () => {
+  const navigate = useNavigate();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -101,8 +103,7 @@ const AIcomposer = () => {
       prompt: basePrompt,
       createdAt: new Date().toISOString(),
     };
-    dummyGenerationData.unshift(newEntry);
-    await fetchGenerations();
+    setGenerating((current) => [newEntry, ...current]);
     setGeneratedContent(result);
     setLoading(false);
   };
@@ -149,7 +150,8 @@ const AIcomposer = () => {
   const handleConfirmSchedule = async () => {
     if (!canConfirmSchedule() || !activeSheduler) return;
     setScheduling(true);
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const item = generating.find((entry) => entry.id === activeSheduler);
+    if (item) navigate('/scheduler', { state: { content: item.content, schedule: `${sheduleDate}T${scheduleTime}` } });
     setScheduling(false);
     setActiveSheduler(null);
     setSelectedPlatforms([]);
@@ -167,6 +169,7 @@ const AIcomposer = () => {
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto p-4">
+      <p className="rounded-xl bg-amber-50 text-amber-900 p-3 text-sm">Text generation is currently a demo. Review your text, then use Scheduler to publish to your connected accounts.</p>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-6">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
@@ -265,6 +268,7 @@ const AIcomposer = () => {
               <div className="text-right text-xs text-slate-500 mt-2">
                 {generatedContent.length} characters
               </div>
+              <button type="button" onClick={() => navigate('/scheduler', { state: { content: generatedContent } })} className="mt-4 rounded-xl bg-slate-900 text-white px-4 py-2">Use in Scheduler</button>
             </div>
           )}
         </div>
@@ -385,7 +389,7 @@ const AIcomposer = () => {
                             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed text-sm"
                           >
                             {scheduling ? <Loader2 className="size-4 animate-spin" /> : <Calendar className="size-4" />}
-                            Confirm Schedule
+                            Continue in Scheduler
                           </button>
                         </div>
                       </div>
